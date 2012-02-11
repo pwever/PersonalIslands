@@ -8,72 +8,6 @@
 	<script src="js/dat.gui.min.js"></script>
 	<script src="js/THREEx.WindowResize.js"></script>
 	<script src="js/THREEx.FullScreen.js"></script>
-	
-	<script id="fragmentShader" type="x-shader/x-fragment">
-
-				uniform float time;
-				uniform vec2 resolution;
-
-				uniform float fogDensity;
-				uniform vec3 fogColor;
-
-				uniform sampler2D texture1;
-				uniform sampler2D texture2;
-
-				varying vec2 vUv;
-
-				void main( void ) {
-
-					vec2 position = -1.0 + 2.0 * vUv;
-
-					vec4 noise = texture2D( texture1, vUv );
-					vec2 T1 = vUv + vec2( 1.5, -1.5 ) * time  *0.02;
-					vec2 T2 = vUv + vec2( -0.5, 2.0 ) * time * 0.01;
-
-					T1.x += noise.x * 2.0;
-					T1.y += noise.y * 2.0;
-					T2.x -= noise.y * 0.2;
-					T2.y += noise.z * 0.2;
-
-					float p = texture2D( texture1, T1 * 2.0 ).a;
-
-					vec4 color = texture2D( texture2, T2 * 2.0 );
-					vec4 temp = color * ( vec4( p, p, p, p ) * 2.0 ) + ( color * color - 0.1 );
-
-					if( temp.r > 1.0 ){ temp.bg += clamp( temp.r - 2.0, 0.0, 100.0 ); }
-					if( temp.g > 1.0 ){ temp.rb += temp.g - 1.0; }
-					if( temp.b > 1.0 ){ temp.rg += temp.b - 1.0; }
-
-					gl_FragColor = temp;
-
-					float depth = gl_FragCoord.z / gl_FragCoord.w;
-					const float LOG2 = 1.442695;
-					float fogFactor = exp2( - fogDensity * fogDensity * depth * depth * LOG2 );
-					fogFactor = 1.0 - clamp( fogFactor, 0.0, 1.0 );
-
-					gl_FragColor = mix( gl_FragColor, vec4( fogColor, gl_FragColor.w ), fogFactor );
-
-				}
-
-			</script>
-
-			<script id="vertexShader" type="x-shader/x-vertex">
-
-				uniform vec2 uvScale;
-				varying vec2 vUv;
-
-				void main()
-				{
-
-					vUv = uvScale * uv;
-					vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );
-					gl_Position = projectionMatrix * mvPosition;
-
-				}
-
-			</script>
-			
-			
 	<script>
 	
 		var DisplayProps = function() {
@@ -100,24 +34,12 @@
 			grid_width: 500,
 			grid_height: 500,
 			camera_max_height: 2000,
-			// smoothing: 2,
-			//influence_matrix: [[0.25, 0.5, 0.25], [0.5, 0, 0.5], [0.25, 0.5, 0.25]],
 			influence_matrix: [[0,0,0.25,0,0],[0,0.25,0.5,0.25,0],[0.25,0.5,0,0.5,0.25],[0,0.25,0.5,0.25,0],[0,0,0.25,0,0]],
 			cell_size: 10,
 			cell_height_factor: 10,
 			velocity: { x: 0, y: 0 },
 			mouse_down: false,
 			colors: [0x3E7FC9, 0x15BAE8, 0xCFC436, 0xA9CC1D, 0x52942C, 0x10631B, 0xBACBD9]
-		};
-		
-		var uniforms = {
-			fogDensity: { type: "f", value: 0.45 },
-			fogColor: { type: "v3", value: new THREE.Vector3( 0, 0, 0 ) },
-			time: { type: "f", value: 1.0 },
-			resolution: { type: "v2", value: new THREE.Vector2() },
-			uvScale: { type: "v2", value: new THREE.Vector2( 3.0, 1.0 ) },
-			texture1: { type: "t", value: 0, texture: THREE.ImageUtils.loadTexture( "images/Fresh_water_ocean_texture.jpeg" ) },
-			texture2: { type: "t", value: 1, texture: THREE.ImageUtils.loadTexture( "images/Fresh_water_ocean_texture.jpeg" ) }
 		};
 		
 		$(document).ready(function() {
@@ -281,12 +203,11 @@
 			// texture.repeat.set(512,512);
 			// texture.offset.set(0, 0);
 			// texture.needsUpdate = true;
-			var material = new THREE.ShaderMaterial( {
-				uniforms: uniforms,
-				vertexShader: $('#vertexShader').text(),
-				fragmentShader: $('#fragmentShader').text()
+			var material = new THREE.MeshShaderMaterial( {
+				uniforms: THREE.ShaderUtils.lib.fresnel.uniforms,
+				vertexShader: THREE.ShaderUtils.lib.fresnel.vertexShader,
+				fragmentShader: THREE.ShaderUtils.lib.fresnel.fragementShader
 			} );
-			alert($('#fragmentShader').text());
 			var plane = new THREE.Mesh(
 				new THREE.PlaneGeometry(settings.grid_width*4,settings.grid_height*4),
 				//new THREE.MeshLambertMaterial({ color: 0x20518A })
