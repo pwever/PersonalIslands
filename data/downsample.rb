@@ -7,7 +7,6 @@ require 'json'
 
 
 RESOLUTION = 0.0075
-MAX_FREQUENCY = 20
 VALUE_RANGES = [
   [-119, -117], # longitude
   [33, 35] # latitude
@@ -89,7 +88,7 @@ def get_cell_hash(points, grid_size)
   cells = Hash.new(0)
   points.each do |p|
     key = p[0] + p[1]*grid_size[0]
-    cells[key] += 1 if cells[key] < MAX_FREQUENCY
+    cells[key] += 1
   end
   cells
 end
