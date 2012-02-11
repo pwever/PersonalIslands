@@ -217,6 +217,7 @@
 			
 			// smoothen out the landscape by lifting neighboring cells
 			var cells = lift_neighbors(data);
+			//var cells = data.frequency;
 			// find the highest cell to establish a altitude scale
 			var highest_frequency = 0;
 			for (var key in cells) {
@@ -280,10 +281,12 @@
 						var influence = settings.influence_matrix[row][col] * clone[key];
 						if (influence!=0) {
 							var cell_index = index + (row-row_offset) * data.columns + (col-col_offset);
-							if (points[String(cell_index)]==null) {
-								points[String(cell_index)] = influence;
-							} else {
-								points[String(cell_index)] += influence;
+							if (cell_index>=0 && cell_index<(data.columns*data.rows)) {
+								if (points[String(cell_index)]==null) {
+									points[String(cell_index)] = influence;
+								} else {
+									points[String(cell_index)] += influence;
+								}
 							}
 						}
 					}
