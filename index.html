@@ -11,7 +11,7 @@
 	<script>
 	
 		var DisplayProps = function() {
-			this.source = "";
+			this.source = "julian-la-2m.json";
 			this.save_png = function() {
 				var data_url = objects.renderer.domElement.toDataURL("image/png");
 				window.open(data_url);
@@ -39,9 +39,10 @@
 			influence_matrix: [[0,0,0.25,0,0],[0,0.25,0.5,0.25,0],[0.25,0.5,0,0.5,0.25],[0,0.25,0.5,0.25,0],[0,0,0.25,0,0]],
 			cell_size: 10,
 			cell_height_factor: 10,
+			frequency_ceiling: 10,
 			velocity: { x: 0, y: 0 },
 			mouse_down: false,
-			colors: [0x3E7FC9, 0x15BAE8, 0xCFC436, 0xA9CC1D, 0x52942C, 0x10631B, 0xBACBD9]
+			colors: [0x15BAE8, 0xCFC436, 0xA9CC1D, 0x52942C, 0x10631B, 0xBACBD9]
 		};
 		
 		$(document).ready(function() {
@@ -50,15 +51,17 @@
 			// initialize GUI
 			var gui = new dat.GUI();
 			var sources = {
-				"Julian 7mi": "julian-la-0.1.json",
-				"Julian 3mi": "julian-la-0.05.json",
-				"Julian 1.5mi": "julian-la-0.02.json",
-				"Julian 1mi": "julian-la-0.01.json",
-				"Pascal 7mi": "pwever-la-0.1.json",
-				"Pascal 3mi": "pwever-la-0.05.json",
-				"Pascal 1.5mi": "pwever-la-0.02.json",
-				"Pascal 1mi": "pwever-la-0.01.json",
-				"Pascal 0.6mi": "pwever-la-0.0075.json"
+				"Julian 2 minute blocks": "julian-la-2m.json",
+				"Julian 1 minute blocks": "julian-la-1m.json",
+				"Julian 40 second blocks": "julian-la-40s.json",
+				"Julian 20 second blocks": "julian-la-20s.json",
+				"Julian 10 second blocks": "julian-la-10s.json",
+				"---": "",
+				"Pascal 2 minute blocks": "pwever-la-2m.json",
+				"Pascal 1 minute blocks": "pwever-la-1m.json",
+				"Pascal 40 second blocks": "pwever-la-40s.json",
+				"Pascal 20 second blocks": "pwever-la-20s.json",
+				"Pascal 10 second blocks": "pwever-la-10s.json"
 			};
 			var source_selection = gui.add(prop, 'source', sources);
 			source_selection.onChange(function(value) {
@@ -92,7 +95,7 @@
 			// initialize mouse and form events
 			init_events();
 			
-			load_data_set("julian-la-0.1.json");
+			load_data_set("julian-la-2m.json");
 		});
 		
 		function load_data_set(url) {
@@ -209,7 +212,7 @@
 				new THREE.MeshLambertMaterial({ color: 0x20518A })
 			);
 	        plane.overdraw = false;
-			plane.position.y = -1;
+			plane.position.z = -1;
 			plane.receiveShadow = true;
 			objects.island.add(plane);
 			
@@ -221,6 +224,9 @@
 			// find the highest cell to establish a altitude scale
 			var highest_frequency = 0;
 			for (var key in cells) {
+				//if (cells[key]>settings.frequency_ceiling) {
+				//	cells[key] = settings.frequency_ceiling;
+				//}
 				if (cells[key]>highest_frequency) {
 					highest_frequency = cells[key];
 				}
@@ -268,6 +274,11 @@
 		}
 		
 		function lift_neighbors(data) {
+			for (var k in data.frequency) {
+				if (data.frequency[k]>settings.frequency_ceiling) {
+					data.frequency[k] = settings.frequency_ceiling;
+				}
+			}
 			var points = data.frequency;
 			var clone = {};
 			jQuery.extend(clone,points);

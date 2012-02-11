@@ -4,20 +4,62 @@
 
 require 'rubygems'
 require 'json'
+require 'micro-optparse'
 
 
-RESOLUTION = 0.0075
-VALUE_RANGES = [
-  [-119, -117], # longitude
-  [33, 35] # latitude
-] # Los Angeles
-# VALUE_RANGES = [
-#   [-123, -121], # longitude
-#   [36.6, 38.5] # latitude
-# ] # San Francisco
+def init
 
-filename = File.join(File.dirname(__FILE__), "pwever-gps-nonull.data")
-outfilename = File.join(File.dirname(__FILE__), "pwever-la-%s.json" % RESOLUTION)
+  options = Parser.new do |p|
+     p.banner = "Custom script to transform a list of lat/lng touples into a heat matrix"
+     p.version = "vs 2012-02-11"
+     p.option :user, "Choose between julian and pwever", :default => "julian", :value_in_set => ["julian","pwever"]
+     p.option :location, "Choose between LA and SF", :default => "la", :value_in_set => ["la","sf"]
+     p.option :resolution, "Resolution (dec degree, min or sec)", :default => "1m", :value_matches => /\d+\.?\d?[ms]?/
+  end.process!
+
+
+  resinput    = options[:resolution]
+  $value_range = options[:location]=="la" ?  [[-119, -117],[33, 35]] : [[-123, -121],[36.6, 38.5]]
+  filename    = options[:user]=="julian" ? "julian-gps-nonull.data" : "pwever-gps-nonull.data"
+  filename    = File.join(File.dirname(__FILE__), filename)
+
+  resolutions = resinput.split(',')
+  resolutions.each do |res|
+    $res_val = res.to_f
+    if (res.end_with? "m") then
+      $res_val = $res_val / 60
+    elsif (res.end_with? "s") then
+      $res_val = $res_val / 60 / 60
+    end
+  
+    outfilename = File.join(File.dirname(__FILE__), "%s-%s-%s.json" % [options[:user], options[:location], res])
+  
+    points = downsample(parse_file(filename))
+    origin = find_origin(points)
+    grid_size = get_grid_size(get_axis_ranges(points))
+    normalized = normalize(points)
+    point_frequency = get_cell_hash(normalize(offset(points, origin)), grid_size)
+  
+    data = Hash.new()
+    data['columns'] = grid_size[0]
+    data['rows'] = grid_size[1]
+    data['origin'] = origin
+    data['resolution'] = $res_val
+    data['frequency'] = point_frequency
+
+    File.open(outfilename, 'w') { |f| f.write(data.to_json); f.close() }
+    p "Created %s." % outfilename
+  
+  end
+
+end
+
+
+
+
+
+
+
 
 
 def parse_file(filename)
@@ -34,7 +76,7 @@ end
 
 def downsample(points)
   points.map do |p|
-    p.map { |val| (val/RESOLUTION).round() * RESOLUTION}
+    p.map { |val| (val/$res_val).round() * $res_val}
   end
 end
 
@@ -65,12 +107,12 @@ def get_axis_ranges(points)
 end
 
 def get_grid_size(ranges)
-  ranges.map { |v| (v / RESOLUTION).round }
+  ranges.map { |v| (v / $res_val).round }
 end
 
 def normalize(points)
   points.map do |point|
-    point.map { |value| (value / RESOLUTION).round }
+    point.map { |value| (value / $res_val).round }
   end
 end
 
@@ -95,24 +137,14 @@ end
 
 def within_range?(vector)
   vector.each_with_index do |val,index|
-    return false if (val < VALUE_RANGES[index][0] || val > VALUE_RANGES[index][1])
+    return false if (val < $value_range[index][0] || val > $value_range[index][1])
   end
   return true
 end
 
 
 
-points = downsample(parse_file(filename))
-origin = find_origin(points)
-grid_size = get_grid_size(get_axis_ranges(points))
-normalized = normalize(points)
-point_frequency = get_cell_hash(normalize(offset(points, origin)), grid_size)
-data = Hash.new()
-data['columns'] = grid_size[0]
-data['rows'] = grid_size[1]
-data['origin'] = origin
-data['resolution'] = RESOLUTION
-data['frequency'] = point_frequency
 
-File.open(outfilename, 'w') { |f| f.write(data.to_json); f.close() }
-p "Done"
+if $0==__FILE__ then
+  init
+end
