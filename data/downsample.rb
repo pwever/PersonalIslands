@@ -36,6 +36,7 @@ def init
   
     points = downsample(parse_file(filename))
     origin = find_origin(points)
+    center = find_center(points)
     grid_size = get_grid_size(get_axis_ranges(points))
     normalized = normalize(points)
     point_frequency = get_cell_hash(normalize(offset(points, origin)), grid_size)
@@ -44,11 +45,12 @@ def init
     data['columns'] = grid_size[0]
     data['rows'] = grid_size[1]
     data['origin'] = origin
+    data['center'] = center
     data['resolution'] = $res_val
     data['frequency'] = point_frequency
 
     File.open(outfilename, 'w') { |f| f.write(data.to_json); f.close() }
-    p "Created %s." % outfilename
+    p "Created %s ." % outfilename
   
   end
 
@@ -88,6 +90,22 @@ def find_origin(points)
     end
   end
   origin
+end
+
+def find_center(points)
+  min_values = Array.new(points[0])
+  max_values = Array.new(points[0])
+  points.each do |p|
+    p.each_with_index do |val,index|
+      min_values[index] = val if val<min_values[index]
+      max_values[index] = val if val>max_values[index]
+    end
+  end
+  center = Array.new
+  min_values.each_with_index do |val,index|
+    center[index] = (min_values[index] + max_values[index]) / 2
+  end
+  center
 end
 
 def get_axis_ranges(points)
