@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Islands</title>
+	<script type="text/javascript" charset="utf-8" src="https://ajax.googleapis.com/ajax/libs/jquery/1.6.2/jquery.min.js"></script>
+	<script src="js/Stats.js"></script>
+	<script src="js/Three.js"></script>
+	<script src="js/dat.gui.min.js"></script>
+	<script src="js/THREEx.WindowResize.js"></script>
+	<script src="js/THREEx.FullScreen.js"></script>
+	<script>
+	
+		var DisplayProps = function() {
+			this.source = "julian-la-1m.json";
+			this.save_png = function() {
+				var data_url = objects.renderer.domElement.toDataURL("image/png");
+				window.open(data_url);
+			};
+			this.toggle_fullscreen = function() {
+				if( THREEx.FullScreen.activated() ){
+				    THREEx.FullScreen.cancel();
+				}else{
+				    THREEx.FullScreen.request();
+				}
+			};
+			this.height = 50;
+			this.perspective = 20;
+			this.day_light = 500;
+		};
+
+		var objects = {};
+		var settings = {
+			perspective: 20,
+			grid_width: 500,
+			grid_height: 500,
+			camera_max_height: 2000,
+			influence_matrix: [[0,0,0.25,0,0],[0,0.25,0.5,0.25,0],[0.25,0.5,0,0.5,0.25],[0,0.25,0.5,0.25,0],[0,0,0.25,0,0]],
+			cell_size: 10,
+			cell_height_factor: 10,
+			frequency_ceiling: 10,
+			velocity: { x: 0, y: 0 },
+			mouse_down: false,
+			colors: [0x15BAE8, 0xCFC436, 0xA9CC1D, 0x52942C, 0x10631B, 0xBACBD9]
+		};
+		
+		$(document).ready(function() {
+			
+			var prop = new DisplayProps();
+			// initialize GUI
+			var gui = new dat.GUI();
+			var sources = {
+				"Julian 2 minute blocks": "julian-la-2m.json",
+				"Julian 1 minute blocks": "julian-la-1m.json",
+				"Julian 40 second blocks": "julian-la-40s.json",
+				"Julian 20 second blocks": "julian-la-20s.json",
+				"Julian 10 second blocks": "julian-la-10s.json",
+				"---": "",
+				"Pascal 2 minute blocks": "pwever-la-2m.json",
+				"Pascal 1 minute blocks": "pwever-la-1m.json",
+				"Pascal 40 second blocks": "pwever-la-40s.json",
+				"Pascal 20 second blocks": "pwever-la-20s.json",
+				"Pascal 10 second blocks": "pwever-la-10s.json"
+				
+			};
+			var source_selection = gui.add(prop, 'source', sources);
+			source_selection.onChange(function(value) {
+				load_data_set(value);
+			});
+			var height = gui.add(prop, "height", 10, 100);
+			height.onChange(function(value) {
+				objects.island.scale.z = value/50;
+				update_screen();
+			});
+			var persp = gui.add(prop, "perspective", 5, 50);
+			persp.onChange(function(value) {
+				settings.perspective = objects.camera.fov = value;
+				objects.camera.updateProjectionMatrix();
+				update_screen();
+			});
+			var light = gui.add(prop, "day_light", 50, 2000);
+			light.onChange(function(value) {
+				objects.light.position.z = value;
+				update_screen();
+			});
+			
+			gui.add(prop, 'save_png');
+			gui.add(prop, 'toggle_fullscreen');
+			
+			// stop the text cursor
+			document.onselectstart = function() { return false; };
+			
+			// initiate the 3d canvas
+			init_3d();
+			// initialize mouse and form events
+			init_events();
+			
+			load_data_set("julian-la-1m.json");
+		});
+		
+		function load_data_set(url) {
+			remove_island();
+			$.ajax({
+				type: "GET",
+				url: "data/" + url,
+				success: function(json, text_status, jqXHR) { add_island(jQuery.parseJSON(json) || json); },
+				error: function(jqXHR, textStatus, errorThrown) { alert(textStatus); }
+			});
+		}
+		
+	    function init_3d() {
+			objects.stats = new Stats();
+			objects.stats.domElement.style.position = 'absolute';
+			objects.stats.domElement.style.top = '0px';
+			$("body").append(objects.stats.domElement);
+							
+			objects.renderer = new THREE.WebGLRenderer({antialias: true, preserveDrawingBuffer: true});
+			objects.renderer.shadowMapEnabled = true;
+			objects.renderer.setClearColorHex(0x000000, 1.0);
+			objects.renderer.clear();
+			
+	        objects.renderer.setSize(window.innerWidth, window.innerHeight);
+			$("body").append(objects.renderer.domElement);
+			
+			// Scene
+	        objects.scene = new THREE.Scene();
+			
+			// Camera
+			var aspect_ratio = window.innerWidth / window.innerHeight;
+	        objects.camera = new THREE.PerspectiveCamera( settings.perspective, aspect_ratio, 1, 10000 );
+			objects.camera.lookAt(objects.scene.position);
+			objects.camera.position = new THREE.Vector3(0,-1000,settings.camera_max_height);
+			objects.camera.lookAt(objects.scene.position);
+			objects.scene.add(objects.camera);
+			
+			// Light
+			var point_light = new THREE.PointLight( 0xFFFFFF );
+			point_light.position = new THREE.Vector3(-1000,-1000,1000);
+			//objects.scene.add(point_light);
+			
+			var spot_light = new THREE.SpotLight();
+			spot_light.castShadow = true;
+			spot_light.position.set( -settings.grid_width, -settings.grid_height, settings.grid_width*0.75);
+			objects.scene.add(spot_light);
+			objects.light = spot_light;
+			
+			update_screen();
+		}
+		
+		function init_events() {
+
+			var windowResize = THREEx.WindowResize(objects.renderer, objects.camera);
+			
+			// mouse events
+			$("canvas").mousedown(function(evt) {
+				var mouse_location = { x:evt.pageX, y: evt.pageY };
+				settings.mouse_down = true;
+				animate();
+				$(document).mousemove(function(evt) {
+					settings.velocity = {
+						x: evt.pageX - mouse_location.x,
+						y: evt.pageY - mouse_location.y
+					};
+					mouse_location = { x:evt.pageX, y: evt.pageY };
+				});
+			});
+			
+			$("canvas").mouseup(function(evt) {
+				$(document).unbind('mousemove');
+				settings.mouse_down = false;
+			});
+			
+		}
+		
+		function animate() {
+			if (objects.island && (settings.mouse_down || Math.abs(settings.velocity.x)>0.1 || Math.abs(settings.velocity.y)>0.1)) {
+		        requestAnimationFrame(animate);
+				objects.island.rotation.z += settings.velocity.x * 0.01;
+				settings.velocity.x *= 0.8;
+				objects.camera.position.z += settings.velocity.y * 5;
+				if (objects.camera.position.z < 10) objects.camera.position.z = 10;
+				if (objects.camera.position.z > settings.camera_max_height) {
+					objects.camera.position.z = settings.camera_max_height;
+				}
+				objects.camera.lookAt(objects.scene.position);
+				settings.velocity.y *= 0.9;
+			}
+	        update_screen();
+	    }
+		
+		function update_screen() {
+			objects.renderer.render(objects.scene, objects.camera);
+			objects.stats.update();
+		}
+		
+		function add_island(data) {
+			// figure out the right size
+			settings.cell_size = Math.min(settings.grid_width/data.columns, settings.grid_height/data.rows);
+			settings.cell_height = settings.cell_height_factor * settings.cell_size;
+			
+			objects.island = new THREE.Object3D();
+			var center = new THREE.Object3D();
+			
+			// smoothen out the landscape by lifting neighboring cells
+			var cells = lift_neighbors(data);
+			//var cells = data.frequency;
+			// find the highest cell to establish a altitude scale
+			var highest_frequency = 0;
+			for (var key in cells) {
+				//if (cells[key]>settings.frequency_ceiling) {
+				//	cells[key] = settings.frequency_ceiling;
+				//}
+				if (cells[key]>highest_frequency) {
+					highest_frequency = cells[key];
+				}
+			}
+			var height_ratio = settings.cell_height / highest_frequency;
+			
+			var terrain = new THREE.PlaneGeometry(settings.cell_size*data.columns, settings.cell_size*data.rows, data.columns, data.rows);
+			for (var key in cells) {
+				var index = parseInt(key);
+				var col = index % data.columns;
+				var row = Math.floor(index/data.columns);
+				var adjusted_index = terrain.vertices.length - ((1+row) * data.columns) + col;
+			    terrain.vertices[adjusted_index].position.z = cells[key]*height_ratio;
+			}
+			alert(data.center);
+			//var lat = data.center[0];
+			//var lng = data.center[1];
+			//var url = "http://maps.googleapis.com/maps/api/staticmap?center="+lng+","+lat+"&zoom=9&size=350x175&maptype=roadmap&sensor=false";
+			//var material = new THREE.MeshLambertMaterial({color: 0x999999, map: THREE.ImageUtils.loadTexture(url)});
+			var material = new THREE.MeshLambertMaterial({color:0xFFFFFF});
+			var plane = new THREE.Mesh(terrain, material);
+			center.add(plane);
+			center.position.x = data.columns*settings.cell_size/-2;
+			center.position.y = data.rows*settings.cell_size/-2;
+			objects.island.add(center);
+			objects.scene.add(objects.island);
+			update_screen();
+		}
+		
+		function remove_island() {
+			if (objects.island) objects.scene.remove(objects.island);
+		}
+		
+		function lift_neighbors(data) {
+			for (var k in data.frequency) {
+				if (data.frequency[k]>settings.frequency_ceiling) {
+					data.frequency[k] = settings.frequency_ceiling;
+				}
+			}
+			var points = data.frequency;
+			var clone = {};
+			jQuery.extend(clone,points);
+			for (var key in clone) {
+				var index = parseInt(key);
+				// lift neighbors
+				var row_offset = Math.floor(settings.influence_matrix.length / 2);
+				for (var row=0; row<settings.influence_matrix.length; row++) {
+					var col_offset = Math.floor(settings.influence_matrix[row].length / 2);
+					for (var col=0; col<settings.influence_matrix[row].length; col++) {
+						var influence = settings.influence_matrix[row][col] * clone[key];
+						if (influence!=0) {
+							var cell_index = index + (row-row_offset) * data.columns + (col-col_offset);
+							if (cell_index>=0 && cell_index<(data.columns*data.rows)) {
+								if (points[String(cell_index)]==null) {
+									points[String(cell_index)] = influence;
+								} else {
+									points[String(cell_index)] += influence;
+								}
+							}
+						}
+					}
+				}
+				//var reach = settings.smoothing;
+				//for (var i=-reach; i<=reach; i++) {
+				//	for (var j=-reach; j<=reach; j++) {
+				//		var offset_index = index + i + j*data.columns;
+				//		var effect = clone[key] / 2;
+				//		if (effect > 0 && offset_index >= 0 && offset_index < data.columns*data.rows) {
+				//			if (points[String(offset_index)]==null) {
+				//				points[String(offset_index)] = effect;
+				//			} else {
+				//				points[String(offset_index)] += effect;
+				//			}
+				//		}
+				//	}
+				//}
+			}
+			return points;
+		}
+		
+		function add_cube(x, y, height) {
+			var color = settings.colors[Math.floor(height/settings.cell_height * (settings.colors.length-1))];
+			var mesh = new THREE.Mesh(
+				new THREE.CubeGeometry(settings.cell_size, settings.cell_size, height),
+				new THREE.MeshLambertMaterial({color: color, wireframe: false, shading: THREE.FlatShading})
+			);
+			mesh.position = new THREE.Vector3(x,y,height/2);
+			mesh.overdraw = false;
+			mesh.castShadow = true;
+			mesh.receiveShadow = true;
+	        return mesh;
+		}
+		
+		
+		
+	</script>
+	<style type="text/css" media="screen">
+		body { padding: 0; margin: 0; background: black; }
+		canvas { background-color: #1BA8E0;
+			/* Mozilla Firefox */ 
+			background-image: -moz-linear-gradient(top, #061625 0%, #132436 100%);
+			/* Webkit (Safari/Chrome 10) */ 
+			background-image: -webkit-gradient(linear, left top, left bottom, color-stop(0, #061625), color-stop(1, #132436));
+			/* Webkit (Chrome 11+) */ 
+			background-image: -webkit-linear-gradient(top, #061625 0%, #132436 100%);
+			/* Proposed W3C Markup */ 
+			background-image: linear-gradient(top, #061625 0%, #132436 100%);
+		}
+		#controls {
+			position: fixed;
+			font-size: 0.5em;
+			margin: 1em;
+		}
+	</style>
+</head>
+<body>
+	
+</body>
+</html>
