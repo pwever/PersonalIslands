@@ -1,0 +1,12 @@
+
+
+Personal Islands
+================
+
+Using location data, aggregated from GPS and cell tower logs, Personal Islands generates islands based on personal movements.
+
+
+Todo
+====
+
+* Add maps tiles for orientation.
